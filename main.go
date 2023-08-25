@@ -114,7 +114,7 @@ func createTask() {
 	scanner.Scan()
 	category = scanner.Text()
 	categoryID, err := strconv.Atoi(category)
-	if err == nil {
+	if err != nil {
 		fmt.Println("categoryID is not valid ,%v\n", err)
 
 		return
@@ -209,13 +209,10 @@ func login() {
 
 	for _, user := range userStorage {
 		if user.Email == Email && user.Password == hashThePassword(password) {
-			if user.Password == password {
-				fmt.Println("login")
-				authenticatedUser = &user
+			fmt.Println("login")
+			authenticatedUser = &user
 
-				break
-			}
-
+			break
 		}
 
 	}
