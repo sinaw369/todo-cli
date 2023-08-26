@@ -5,7 +5,9 @@ import (
 	"cli/Constant"
 	"cli/contract"
 	"cli/entity"
-	"cli/fileStore"
+	"cli/repository/fileStore"
+	"cli/repository/memorystore"
+	"cli/service/task"
 	"crypto/md5"
 	"encoding/hex"
 	"flag"
@@ -14,33 +16,18 @@ import (
 	"strconv"
 )
 
-type Task struct {
-	ID         int
-	Title      string
-	DueDate    string
-	CategoryID int
-	IsDone     bool
-	UserID     int
-}
-type Category struct {
-	ID     int
-	Title  string
-	Color  string
-	UserID int
-}
-
 var (
 	userStorage       []entity.User
 	authenticatedUser *entity.User
-	taskStorage       []Task
-	categoryStorage   []Category
+	categoryStorage   []entity.Category
 	serializationMode string
 )
 
 const userStoragepath = "user.txt"
 
 func main() {
-
+	taskMemoryRepo := memorystore.NewTaskStore()
+	taskService := task.NewService(taskMemoryRepo)
 	fmt.Println("Hello to TODO application")
 	sm := flag.String("serialize-mode", Constant.JsonSerializationMode, "serialization to write data to disk")
 	command := flag.String("command", "", "command to execute")
@@ -62,7 +49,7 @@ func main() {
 	users := userFileStore.Load()
 	userStorage = append(userStorage, users...)
 	for {
-		runCommand(userFileStore, *command)
+		runCommand(userFileStore, *command, taskService)
 		scanner := bufio.NewScanner(os.Stdin)
 		fmt.Println("please enter another command")
 		scanner.Scan()
@@ -73,7 +60,7 @@ func main() {
 	// fmt.Printf("userStorage:%+v\n", userStorage)
 	/////%+v =fild name
 }
-func runCommand(store contract.UserWriteStore, command string) {
+func runCommand(store contract.UserWriteStore, command string, taskService *task.Service) {
 	if command != "register-user" && authenticatedUser == nil {
 		fmt.Println("To use the program, you must login first")
 		login()
@@ -88,9 +75,9 @@ func runCommand(store contract.UserWriteStore, command string) {
 	store = userFileStore*/
 	switch command {
 	case "create-task":
-		createTask()
+		createTask(taskService)
 	case "list-task":
-		listTask()
+		listTask(taskService)
 	case "create-category":
 		createCategory()
 	case "register-user":
@@ -103,7 +90,7 @@ func runCommand(store contract.UserWriteStore, command string) {
 	}
 
 }
-func createTask() {
+func createTask(taskService *task.Service) {
 	scanner := bufio.NewScanner(os.Stdin)
 	var title, duedate, category string
 	fmt.Println("Please Enter The Task Title")
@@ -115,40 +102,26 @@ func createTask() {
 	category = scanner.Text()
 	categoryID, err := strconv.Atoi(category)
 	if err != nil {
-		fmt.Println("categoryID is not valid ,%v\n", err)
+		fmt.Printf("categoryID is not valid ,%v\n", err)
 
 		return
 	}
-	isFound := false
-	for _, c := range categoryStorage {
-		if c.ID == categoryID && c.UserID == authenticatedUser.ID {
-			isFound = true
-
-			break
-		}
-	}
-
-	if !isFound {
-		fmt.Println("category id is not found")
-
-		return
-	}
-
 	fmt.Println("Please Enter The Task DueDate")
 	scanner.Scan()
 	duedate = scanner.Text()
-	task := Task{
-		ID:         len(taskStorage) + 1,
-		Title:      title,
-		DueDate:    duedate,
-		CategoryID: categoryID,
-		IsDone:     false,
-		UserID:     authenticatedUser.ID,
+	response, err := taskService.Create(task.CreateRequest{
+		Title:               title,
+		DueDate:             duedate,
+		CategoryID:          categoryID,
+		AuthenticatedUserID: authenticatedUser.ID,
+	})
+	if err != nil {
+		fmt.Println("error creating task:", err)
+
+		return
 	}
-	taskStorage = append(taskStorage, task)
 
-	fmt.Println("task:", title, category, duedate)
-
+	fmt.Println("created task:", response.Task)
 }
 
 func createCategory() {
@@ -161,7 +134,7 @@ func createCategory() {
 	scanner.Scan()
 	color = scanner.Text()
 	fmt.Println("category:", title, color)
-	category := Category{
+	category := entity.Category{
 		ID:     len(categoryStorage) + 1,
 		Title:  title,
 		Color:  color,
@@ -222,12 +195,14 @@ func login() {
 	}
 }
 
-func listTask() {
-	for _, task := range taskStorage {
-		if task.UserID == authenticatedUser.ID {
-			fmt.Println(task)
-		}
+func listTask(taskService *task.Service) {
+	userTasks, err := taskService.List(task.ListRequest{UserID: authenticatedUser.ID})
+	if err != nil {
+		fmt.Println("error", err)
+
+		return
 	}
+	fmt.Println("The tasks", userTasks)
 }
 func hashThePassword(password string) string {
 	hash := md5.Sum([]byte(password))
