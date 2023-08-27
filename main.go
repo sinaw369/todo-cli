@@ -28,6 +28,7 @@ const userStoragepath = "user.txt"
 func main() {
 	taskMemoryRepo := memorystore.NewTaskStore()
 	taskService := task.NewService(taskMemoryRepo)
+	
 	fmt.Println("Hello to TODO application")
 	sm := flag.String("serialize-mode", Constant.JsonSerializationMode, "serialization to write data to disk")
 	command := flag.String("command", "", "command to execute")
